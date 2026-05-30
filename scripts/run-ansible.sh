@@ -149,10 +149,11 @@ fi
 # Restart vault-proxy
 $DOCKER_CMD rm -f vault-proxy 2>/dev/null || true
 $DOCKER_CMD run -d --name vault-proxy \
-    --network container:localstack-main \
+    --network localstack-net \
+    -p 8200:8200 \
     alpine/socat \
-    tcp-listen:4510,fork,reuseaddr "tcp-connect:${NODE1_IP}:8200"
-echo "  vault-proxy started: localhost:4510 -> $NODE1_IP:8200"
+    tcp-listen:8200,fork,reuseaddr "tcp-connect:${NODE1_IP}:8200"
+echo "  vault-proxy started: localhost:8200 -> $NODE1_IP:8200"
 
 # ─── Final Summary ────────────────────────────────────────────────────────────
 echo ""
@@ -160,7 +161,7 @@ echo "========================================"
 echo " VAULT HA CLUSTER IS READY!"
 echo "========================================"
 echo ""
-echo "  Access Vault UI:  http://localhost:4510/ui"
+echo "  Access Vault UI:  http://localhost:8200/ui"
 echo ""
 
 if [ -f ansible/vault-init-keys.json ]; then

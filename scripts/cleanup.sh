@@ -44,12 +44,13 @@ else
     echo "  No EC2 containers found"
 fi
 
-# Step 4: Clean Terraform state files
+# Step 4: Clean Terraform state files and LocalStack volumes
 echo ""
-echo "[4/4] Cleaning Terraform state files..."
+echo "[4/4] Cleaning Terraform state files and volumes..."
 rm -f terraform/terraform.tfstate
 rm -f terraform/terraform.tfstate.backup
 rm -f docker-compose.yml.bak
+rm -rf volume
 echo "  Cleaned"
 
 echo ""
