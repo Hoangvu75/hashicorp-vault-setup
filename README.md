@@ -263,3 +263,80 @@ Trong LocalStack, NLB DNS là: `vault-nlb.elb.localhost.localstack.cloud`
 | `vault-proxy` không kết nối được | IP của Node 1 thay đổi sau mỗi deploy | Script tự `docker inspect` & restart proxy |
 | NLB DNS không resolve từ proxy | LocalStack NLB DNS resolve thành IPv6 `::1` | Proxy dùng IP thực từ `docker inspect` |
 | Ansible không SSH được vào Node 2, 3 | SSH key chưa được phân phối | Role `ssh-setup` xử lý tự động |
+
+---
+
+## So sánh & Hướng dẫn triển khai trên AWS Thực tế (Production)
+
+Khi chuyển từ môi trường giả lập **LocalStack** sang **AWS Cloud thực tế**, kiến trúc cốt lõi vẫn giữ nguyên (3 EC2 nodes, Raft storage, NLB). Tuy nhiên, bạn cần thực hiện một số chỉnh sửa và áp dụng các best practices dưới đây:
+
+### 1. Bảng so sánh giữa LocalStack và AWS Thực tế
+
+| Thành phần | Môi trường LocalStack (Mô phỏng) | Môi trường AWS Thực tế (Production) |
+| :--- | :--- | :--- |
+| **Docker Compose** | Bắt buộc (để chạy container LocalStack & `vault-proxy`) | **Không dùng** (Xóa hoàn toàn `docker-compose.yml`) |
+| **Cấu hình AWS Provider** | Trỏ endpoint về `http://localhost:4566` | Trỏ trực tiếp tới AWS API thực tế (mặc định của Terraform) |
+| **Quá trình Provisioning** | Dùng `-parallelism=1` để tránh conflict port SSH trên host | Chạy song song bình thường (không bị giới hạn parallelism) |
+| **Truy cập Vault** | Qua `vault-proxy` (socat port 4510) trên host | Trực tiếp qua **AWS NLB DNS** hoặc VPN/Bastion Host |
+| **SSH Keys** | Phân phối thủ công qua `docker cp` lên Node 1 | Sử dụng **AWS Key Pair** và **Bastion Host** (hoặc AWS SSM Session Manager) |
+| **Mạng (Networking)** | Network bridge Docker nội bộ (`localstack-net`) | VPC Private Subnets, Security Groups nghiêm ngặt |
+| **Giao thức kết nối** | HTTP (`http://`) để test nhanh | Bắt buộc HTTPS (`https://`) với TLS Certificate thực tế |
+| **Mở khóa Vault (Unseal)** | Thủ công bằng 3 trong 5 keys (Shamir's Secret Sharing) | Tự động mở khóa sử dụng **AWS KMS Auto-unseal** (Khuyên dùng) |
+
+---
+
+### 2. Các bước chỉnh sửa mã nguồn khi chuyển sang AWS thật
+
+#### A. Cấu hình Terraform (`terraform/main.tf`)
+1. **Loại bỏ LocalStack Endpoint**:
+   Xóa hoặc comment block `endpoints` trong cấu hình provider:
+   ```hcl
+   provider "aws" {
+     region = "ap-southeast-1" # Region thật trên AWS
+     # XÓA HOÀN TOÀN block cấu hình localstack ở đây
+   }
+   ```
+2. **Sử dụng AMI thực tế**:
+   Thay đổi AMI từ image giả lập của LocalStack sang AMI Ubuntu/Debian chính thức của region (ví dụ: Ubuntu Server 22.04 LTS).
+3. **IAM Role cho Auto-Unseal**:
+   Thêm IAM policy và IAM instance profile gắn vào các EC2 nodes để cấp quyền gọi tới AWS KMS:
+   ```hcl
+   resource "aws_iam_role" "vault_unseal" {
+     name = "vault-unseal-role"
+     # Trust policy cho ec2.amazonaws.com
+   }
+   # Gắn policy cấp quyền kms:Encrypt, kms:Decrypt, kms:DescribeKey cho AWS KMS Key
+   ```
+
+#### B. Cấu hình Vault (`ansible/roles/vault-configure/templates/vault.hcl.j2`)
+Để sử dụng tính năng tự động mở khóa (**AWS KMS Auto-unseal**), cấu hình Vault cần khai báo thêm block `seal`:
+```hcl
+seal "awskms" {
+  region     = "{{ aws_region }}"
+  kms_key_id = "{{ vault_kms_key_id }}"
+}
+```
+*Lưu ý: Khi cấu hình KMS Auto-unseal, Vault sẽ tự động mở khóa khi service khởi động lại mà không cần chạy playbook/script unseal thủ công.*
+
+#### C. Thay đổi luồng Ansible & SSH
+Trên AWS thật, bạn không thể sử dụng `docker cp` để copy code Ansible vào EC2 hay chạy lệnh trực tiếp bằng `docker exec`. Thay vào đó:
+1. **Chạy Ansible từ CI/CD hoặc Bastion**:
+   Chạy Ansible trực tiếp từ máy của bạn (qua VPN nối vào VPC) hoặc từ một **Bastion Host / Jump Box** đặt tại Public Subnet.
+2. **Thay đổi cách generate inventory (`generate-inventory.sh`)**:
+   Sử dụng dynamic inventory của Ansible (`aws_ec2` plugin) hoặc viết script để parse IP từ file `terraform.tfstate` thực tế thay vì dùng `docker inspect`:
+   ```bash
+   # Lấy danh sách IP thực của EC2 từ Terraform Output
+   terraform output -json instance_private_ips
+   ```
+3. **Cấu hình SSH**:
+   Sử dụng file private key `.pem` tải xuống từ AWS Key Pair để kết nối SSH trực tiếp:
+   ```bash
+   ansible-playbook -i inventory/hosts.yml playbooks/site.yml --private-key=~/.ssh/aws-key.pem -u ubuntu
+   ```
+
+---
+
+### 3. Khuyến nghị Bảo mật cho Production
+* **Bật TLS (HTTPS)**: Cấu hình `listener "tcp"` trong `vault.hcl` sử dụng đường dẫn chứng chỉ TLS (`tls_cert_file` và `tls_key_file`).
+* **Private Subnets**: Đặt toàn bộ 3 Vault nodes vào dải Private Subnets. Chỉ NLB (hoặc ALB) và Bastion Host được đặt ở Public Subnets.
+* **Không lưu Root Token**: Sau khi khởi tạo Vault lần đầu, root token và recovery keys chỉ nên hiển thị một lần duy nhất và cất giữ ở nơi cực kỳ an toàn (như 1 Vault khác hoặc công cụ quản lý mật khẩu của doanh nghiệp). Xóa bỏ file JSON lưu trữ credentials trên ổ đĩa của server.
