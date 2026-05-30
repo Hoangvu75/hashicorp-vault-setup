@@ -1,0 +1,7 @@
+---
+# Playbook: Configure Vault for HA with Raft storage
+- name: Configure Vault HA with Raft Integrated Storage
+  hosts: vault_servers
+  gather_facts: true
+  roles:
+    - vault-configure

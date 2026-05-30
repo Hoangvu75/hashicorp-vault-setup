@@ -1,0 +1,190 @@
+---
+# Playbook: Initialize Vault cluster and unseal all nodes
+# This playbook should be run AFTER 02-configure-vault.yml
+
+# Step 1: Initialize Vault on the first node (leader)
+- name: Initialize Vault cluster
+  hosts: vault_init
+  gather_facts: false
+  tasks:
+    - name: Check if Vault is already initialized
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault status -format=json 2>/dev/null || true"
+      register: vault_status_raw
+      changed_when: false
+
+    - name: Parse Vault status
+      set_fact:
+        vault_initialized: "{{ (vault_status_raw.stdout | from_json).initialized | default(false) }}"
+      when: vault_status_raw.stdout != ""
+      ignore_errors: true
+
+    - name: Set vault_initialized to false if status unavailable
+      set_fact:
+        vault_initialized: false
+      when: vault_initialized is not defined
+
+    - name: Initialize Vault
+      shell: |
+        VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} \
+        vault operator init \
+          -key-shares=5 \
+          -key-threshold=3 \
+          -format=json
+      register: vault_init_output
+      when: not vault_initialized
+
+    - name: Save init output to file locally
+      copy:
+        content: "{{ vault_init_output.stdout }}"
+        dest: "./vault-init-keys.json"
+        mode: "0600"
+      delegate_to: localhost
+      when: vault_init_output is changed
+
+    - name: Parse init keys
+      set_fact:
+        vault_keys: "{{ (vault_init_output.stdout | from_json).unseal_keys_b64 }}"
+        vault_root_token: "{{ (vault_init_output.stdout | from_json).root_token }}"
+      when: vault_init_output is changed
+
+    - name: Load existing init keys if already initialized
+      block:
+        - name: Read init keys file locally
+          slurp:
+            src: "./vault-init-keys.json"
+          delegate_to: localhost
+          register: init_keys_file
+
+        - name: Parse existing init keys
+          set_fact:
+            vault_keys: "{{ (init_keys_file.content | b64decode | from_json).unseal_keys_b64 }}"
+            vault_root_token: "{{ (init_keys_file.content | b64decode | from_json).root_token }}"
+      when: vault_initialized | bool
+      ignore_errors: true
+
+    - name: Display root token (SAVE THIS!)
+      debug:
+        msg: |
+          ========================================
+          VAULT ROOT TOKEN: {{ vault_root_token }}
+          UNSEAL KEYS: {{ vault_keys }}
+          ========================================
+          IMPORTANT: Save these credentials securely!
+          Init keys file saved locally at: ./vault-init-keys.json
+          ========================================
+
+    # Unseal the leader node
+    - name: Unseal Vault leader (key 1)
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator unseal {{ vault_keys[0] }}"
+      changed_when: false
+
+    - name: Unseal Vault leader (key 2)
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator unseal {{ vault_keys[1] }}"
+      changed_when: false
+
+    - name: Unseal Vault leader (key 3)
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator unseal {{ vault_keys[2] }}"
+      changed_when: false
+
+    - name: Wait for leader to be fully unsealed
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault status -format=json"
+      register: leader_status
+      retries: 10
+      delay: 3
+      until: (leader_status.stdout | from_json).sealed == false
+      changed_when: false
+
+    - name: Display leader status
+      debug:
+        msg: "Leader {{ inventory_hostname }} is unsealed and ready"
+
+# Step 2: Unseal follower nodes
+- name: Unseal Vault follower nodes
+  hosts: vault_joiners
+  gather_facts: false
+  tasks:
+    - name: Get unseal keys from leader
+      set_fact:
+        vault_keys: "{{ hostvars[groups['vault_init'][0]]['vault_keys'] }}"
+        vault_root_token: "{{ hostvars[groups['vault_init'][0]]['vault_root_token'] }}"
+
+    - name: Wait for Vault to be ready on follower
+      uri:
+        url: "http://127.0.0.1:{{ vault_api_port }}/v1/sys/health"
+        method: GET
+        status_code: [200, 429, 472, 473, 501, 503]
+      register: follower_health
+      retries: 15
+      delay: 5
+      until: follower_health.status in [200, 429, 472, 473, 501, 503]
+
+    - name: Force Raft join to leader
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator raft join http://{{ hostvars[groups['vault_init'][0]]['ansible_host'] }}:{{ vault_api_port }}"
+      register: raft_join
+      retries: 5
+      delay: 5
+      until: raft_join.rc == 0
+
+    - name: Unseal follower (key 1)
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator unseal {{ vault_keys[0] }}"
+      changed_when: false
+
+    - name: Unseal follower (key 2)
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator unseal {{ vault_keys[1] }}"
+      changed_when: false
+
+    - name: Unseal follower (key 3)
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator unseal {{ vault_keys[2] }}"
+      changed_when: false
+
+    - name: Wait for follower to be unsealed
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault status -format=json"
+      register: follower_status
+      retries: 10
+      delay: 3
+      until: (follower_status.stdout | from_json).sealed == false
+      changed_when: false
+
+    - name: Display follower status
+      debug:
+        msg: "Follower {{ inventory_hostname }} is unsealed and ready"
+
+# Step 3: Verify HA cluster
+- name: Verify Vault HA cluster
+  hosts: vault_init
+  gather_facts: false
+  tasks:
+    - name: Login and check raft peers
+      shell: |
+        export VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }}
+        export VAULT_TOKEN={{ vault_root_token }}
+        vault operator raft list-peers -format=json
+      register: raft_peers
+      changed_when: false
+      retries: 5
+      delay: 5
+
+    - name: Display Raft cluster members
+      debug:
+        msg: "{{ raft_peers.stdout | from_json }}"
+
+    - name: Verify all nodes are in the cluster
+      assert:
+        that:
+          - (raft_peers.stdout | from_json).data.config.servers | length == groups['vault_servers'] | length
+        fail_msg: "Expected {{ groups['vault_servers'] | length }} nodes in Raft cluster, got {{ (raft_peers.stdout | from_json).data.config.servers | length }}"
+        success_msg: "All nodes are part of the Vault HA cluster!"
+
+    - name: Display final cluster summary
+      debug:
+        msg: |
+          ============================================
+          VAULT HA CLUSTER IS READY!
+          ============================================
+          Nodes configured: {{ groups['vault_servers'] | length }}
+          
+          Root Token: {{ vault_root_token }}
+          Init Keys saved locally at: ./vault-init-keys.json
+          
+          You can access the cluster UI directly via the Node IPs on port 8200!
+          ============================================

@@ -1,0 +1,15 @@
+---
+# Playbook chính để cài đặt và cấu hình HashiCorp Vault HA (Raft) On-Premise
+# Cấu trúc: 3 Node chạy Vault
+#
+# Cách chạy (từ máy cá nhân / control node):
+#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml
+
+- name: "Phase 1: Install HashiCorp Vault"
+  import_playbook: 01-install-vault.yml
+
+- name: "Phase 2: Configure Vault Services"
+  import_playbook: 02-configure-vault.yml
+
+- name: "Phase 3: Initialize and Unseal Vault Cluster"
+  import_playbook: 03-init-vault.yml

@@ -1,0 +1,8 @@
+---
+- name: Restart vault
+  shell: |
+    pkill vault || true
+    sleep 1
+    nohup vault server -config={{ vault_config_dir }}/vault.hcl > {{ vault_log_dir }}/vault.log 2>&1 &
+    sleep 2
+  become: true

@@ -1,0 +1,13 @@
+# Vault configuration
+vault_version: "1.19.0"
+vault_user: "vault"
+vault_group: "vault"
+vault_config_dir: "/etc/vault.d"
+vault_data_dir: "/opt/vault/data"
+vault_log_dir: "/var/log/vault"
+vault_bin_path: "/usr/bin/vault"
+
+# Vault network settings
+vault_api_port: 8200
+vault_cluster_port: 8201
+vault_tls_disable: true

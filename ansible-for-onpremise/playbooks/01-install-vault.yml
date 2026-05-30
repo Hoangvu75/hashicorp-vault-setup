@@ -1,0 +1,17 @@
+---
+# Playbook: Install HashiCorp Vault on all nodes
+- name: Install HashiCorp Vault
+  hosts: vault_servers
+  gather_facts: true
+  roles:
+    - vault-install
+
+  post_tasks:
+    - name: Confirm Vault is installed
+      command: vault version
+      register: vault_ver
+      changed_when: false
+
+    - name: Show Vault version on each node
+      debug:
+        msg: "{{ inventory_hostname }}: {{ vault_ver.stdout }}"
