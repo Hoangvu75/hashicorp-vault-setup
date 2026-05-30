@@ -1,0 +1,32 @@
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: local-vault
+spec:
+  address: "http://host.docker.internal:4510"
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: approle-auth
+spec:
+  method: appRole
+  mount: approle
+  vaultConnectionRef: local-vault
+  appRole:
+    roleId: "test-role-id"
+    secretRef: "vault-approle-secret"
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultStaticSecret
+metadata:
+  name: myapp-secret-sync
+spec:
+  type: kv-v2
+  mount: secret
+  path: myapp
+  destination:
+    name: myapp-k8s-secret
+    create: true
+  vaultAuthRef: approle-auth

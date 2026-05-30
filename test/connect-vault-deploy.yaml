@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-test-app
+  labels:
+    app: vault-test-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault-test-app
+  template:
+    metadata:
+      labels:
+        app: vault-test-app
+    spec:
+      containers:
+      - name: test-app
+        image: alpine:latest
+        envFrom:
+        - secretRef:
+            name: myapp-k8s-secret # Đây là K8s Native Secret được Operator tạo ra
+        command:
+        - "/bin/sh"
+        - "-c"
+        - |
+          echo "Ứng dụng khởi động..."
+          echo "Đây là các biến môi trường được K8s nạp tự động từ Vault thông qua envFrom:"
+          echo "----------------------------------------"
+          env | grep -E "^(DB_HOST|DB_USER|DB_PASS|API_KEY)"
+          echo "----------------------------------------"
+          echo "App đang chạy và lắng nghe (sleep...)"
+          sleep 3600
