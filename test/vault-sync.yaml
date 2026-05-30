@@ -1,4 +1,12 @@
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-approle-secret
+type: Opaque
+data:
+  id: "dGVzdC1zZWNyZXQtaWQ=" # base64 của "test-secret-id"
+---
 apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultConnection
 metadata:

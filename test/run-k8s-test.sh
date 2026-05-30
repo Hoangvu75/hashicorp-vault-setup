@@ -47,9 +47,7 @@ sleep 3
 # 4. Cấp phát AppRole credentials cho Operator và áp dụng cấu hình
 echo ""
 echo "[3/4] Đồng bộ Vault Secret sang Kubernetes Secret..."
-kubectl delete secret vault-approle-secret 2>/dev/null || true
-# Tạo K8s Secret chứa SecretID của AppRole (bắt buộc key tên là 'id' theo chuẩn của VSO)
-kubectl create secret generic vault-approle-secret --from-literal=id="test-secret-id"
+# K8s Secret chứa SecretID của AppRole đã được định nghĩa trực tiếp bằng base64 trong file vault-sync.yaml
 kubectl apply -f test/vault-sync.yaml
 
 echo "Đợi 15 giây cho quá trình đồng bộ hoàn tất (VSO cần thời gian để gọi API Vault)..."
