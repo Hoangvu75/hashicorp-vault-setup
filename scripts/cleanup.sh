@@ -19,10 +19,7 @@ echo "========================================"
 echo " CLEANUP: Destroying all environments"
 echo "========================================"
 
-# Step 1: Stop & remove vault-proxy
-echo ""
-echo "[1/4] Removing vault-proxy..."
-$DOCKER_CMD rm -f vault-proxy 2>/dev/null && echo "  vault-proxy removed" || echo "  vault-proxy not found, skipping"
+# Step 1 is removed as vault-proxy is no longer used
 
 # Step 2: Destroy Terraform resources (removes EC2 containers)
 echo ""

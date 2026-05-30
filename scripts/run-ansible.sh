@@ -132,31 +132,13 @@ $DOCKER_CMD cp "localstack-ec2.$NODE1_ID:/opt/ansible/vault-init-keys.json" ./an
     && echo "  Keys saved to: ansible/vault-init-keys.json" \
     || echo "  WARNING: Could not copy keys file"
 
-# ─── Step 8: Update vault-proxy with correct IP ──────────────────────────────
-echo ""
-echo "========================================"
-echo " STEP 8: Updating vault-proxy"
-echo "========================================"
-NODE1_IP=$($DOCKER_CMD inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "localstack-ec2.$NODE1_ID")
-echo "  Node 1 IP: $NODE1_IP"
-
-# Restart vault-proxy
-$DOCKER_CMD rm -f vault-proxy 2>/dev/null || true
-    # Start Nginx proxy to forward traffic to Vault
-    $DOCKER_CMD run -d --name vault-proxy \
-        --network localstack-ec2-link-local \
-        -p 8200:8200 \
-        nginx:alpine \
-        sh -c "echo 'events {} http { server { listen 8200; location / { proxy_pass http://${NODE1_IP}:8200; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; } } }' > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
-echo "  vault-proxy started: 127.0.0.1:8200 -> $NODE1_IP:8200"
-
 # ─── Final Summary ────────────────────────────────────────────────────────────
 echo ""
 echo "========================================"
 echo " VAULT HA CLUSTER IS READY!"
 echo "========================================"
 echo ""
-echo "  Access Vault UI:  http://127.0.0.1:8200/ui"
+echo "  Access Vault UI:  http://127.0.0.1:4510/ui"
 echo ""
 
 if [ -f ansible/vault-init-keys.json ]; then

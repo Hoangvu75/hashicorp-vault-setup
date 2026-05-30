@@ -20,20 +20,20 @@ Dự án triển khai tự động Cụm **HashiCorp Vault High Availability (3 
 │                        Máy Host (Windows / macOS / Linux)                    │
 │                                                                              │
 │  Browser / CLI                 Terraform CLI          bash scripts/start.sh  │
-│  http://127.0.0.1:8200/ui      (IaC provisioning)     (full automation)      │
+│  http://127.0.0.1:4510/ui      (IaC provisioning)     (full automation)      │
 │         │                            │                        │              │
 │         ▼                            ▼                        ▼              │
 │ ┌──────────────────────────────────────────────────────────────────────────┐ │
 │ │                     Docker Desktop (LocalStack Pro)                      │ │
 │ │                                                                          │ │
-│ │  ┌─────────────────┐    ┌──────────────────────────────────────────────┐ │ │
-│ │  │   vault-proxy   │    │      localstack-ec2-link-local (Bridge)      │ │ │
-│ │  │ (nginx:alpine)  │    │                                              │ │ │
-│ │  │  Port 8200:8200 │    │  ┌──────────────────────────────────────┐    │ │ │
-│ │  └────────┬────────┘    │  │         LocalStack Pro               │    │ │ │
-│ │           │             │  │   (giả lập AWS: EC2, VPC, ELBv2)     │    │ │ │
-│ │           │  forward    │  │                                      │    │ │ │
-│ │           └────────────►│  │  ┌─────────────┐                     │    │ │ │
+│ │                         ┌──────────────────────────────────────────────┐ │ │
+│ │                         │      localstack-ec2-link-local (Bridge)      │ │ │
+│ │                         │                                              │ │ │
+│ │                         │  ┌──────────────────────────────────────┐    │ │ │
+│ │                         │  │         LocalStack Pro               │    │ │ │
+│ │                         │  │   (giả lập AWS: EC2, VPC, ELBv2)     │    │ │ │
+│ │    Port 4510 mapped     │  │                                      │    │ │ │
+│ │    to LocalStack NLB───►│  │  ┌─────────────┐                     │    │ │ │
 │ │                         │  │  │  AWS NLB    │ (L4 Load Balancer)  │    │ │ │
 │ │                         │  │  │  :8200      │ Round-Robin TCP     │    │ │ │
 │ │                         │  │  └──────┬──────┘                     │    │ │ │
@@ -53,7 +53,7 @@ Dự án triển khai tự động Cụm **HashiCorp Vault High Availability (3 
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Mạng (Network):** Môi trường LocalStack sử dụng mạng `localstack-ec2-link-local` để giả lập VPC. Do giới hạn của Docker Bridge, chúng ta sử dụng `nginx` làm proxy (`vault-proxy`) để mở port `8200` ra localhost của máy thật.
+- **Mạng (Network):** Môi trường LocalStack sử dụng mạng `localstack-ec2-link-local` để giả lập VPC. LocalStack tự động cấp phát port `4510` (trên dải external services) cho AWS Network Load Balancer (NLB) để kết nối trực tiếp từ máy host vào cụm Vault.
 - **Tự động hóa:** Ansible được đưa thẳng vào `EC2 #1` (đóng vai trò như Bastion/Control Node) để kết nối SSH sang 2 Node còn lại, cài đặt và cấu hình cụm Raft.
 
 ---
@@ -78,7 +78,6 @@ Chịu trách nhiệm đưa Ansible vào môi trường và chạy playbook:
 - Cài đặt Python 3, Pip và Ansible trực tiếp trên Node 1.
 - Ra lệnh cho Node 1 thực thi `ansible-playbook` để cấu hình chính nó và SSH sang cấu hình Node 2, Node 3.
 - Sau khi Ansible hoàn tất, copy ngược file credentials `vault-init-keys.json` (chứa Root Token) về lại máy Host.
-- Xóa bỏ Nginx Proxy cũ và **dựng Nginx Proxy mới** (`vault-proxy`) trỏ đúng vào IP của Node 1 để host có thể truy cập UI.
 
 ### 3. `scripts/generate-inventory.sh` (Sinh Inventory động)
 Giải quyết bài toán IP động của LocalStack:
@@ -88,7 +87,6 @@ Giải quyết bài toán IP động của LocalStack:
 
 ### 4. `scripts/cleanup.sh` (Dọn dẹp môi trường)
 Dùng để reset hệ thống về trạng thái sạch:
-- Xóa bỏ container `vault-proxy`.
 - Xóa cấu hình credentials `vault-init-keys.json`.
 - Chạy `terraform destroy` để thu hồi toàn bộ tài nguyên AWS (VPC, EC2, NLB).
 - Force-remove (xóa ép) bất kỳ EC2 container nào còn sót lại trên Docker do LocalStack rò rỉ.
@@ -122,11 +120,10 @@ bash scripts/start.sh
 2. Terraform tạo VPC, 3 EC2, và Network Load Balancer.
 3. Ansible tự động cài đặt Vault, thiết lập Raft Cluster, khởi tạo Vault (Generate Root token & Unseal keys).
 4. Ansible tự động mở khóa (Unseal) cả 3 nodes.
-5. `vault-proxy` bằng Nginx được khởi tạo tự động.
 
 ### 3. Kết quả & Truy cập
 Sau khoảng 2-3 phút, bạn sẽ thấy thông báo hoàn tất. Bạn có thể truy cập ngay:
-- **Giao diện UI**: `http://127.0.0.1:8200/ui`
+- **Giao diện UI**: `http://127.0.0.1:4510/ui`
 - **Thông tin đăng nhập**: File `ansible/vault-init-keys.json` sẽ chứa **Root Token** và **5 Unseal Keys**.
 
 ### 4. Dọn dẹp môi trường
@@ -153,10 +150,10 @@ Khi đẩy hệ thống lên AWS thật, hãy thực hiện các thay đổi sau
 - **IAM Instance Profile (Auto Unseal)**: Thêm Role cho EC2 để các instances có quyền truy cập vào dịch vụ AWS KMS. Vault sẽ dùng KMS Key này để Auto-unseal khi service bị restart (thay vì phải gõ Unseal Keys thủ công).
 - **Bỏ -parallelism=1**: Khi chạy Terraform `apply`, không cần ép chạy tuần tự `-parallelism=1` nữa vì AWS thật không bị kẹt port 22 như LocalStack.
 
-### 2. Thay đổi luồng Ansible & Proxy
-- **Bỏ `vault-proxy`**: Ở AWS, ta sẽ dùng trực tiếp **DNS của AWS Network Load Balancer (NLB)** hoặc **Application Load Balancer (ALB)**. Bạn không cần chạy Nginx container nữa. Client sẽ truy cập Vault qua `https://vault.domain.com`.
+### 2. Thay đổi luồng Ansible
 - **Cách chạy Ansible**: Thay vì copy script vào bên trong Docker Container (Node 1), hãy chạy `ansible-playbook` trực tiếp từ máy của bạn qua VPN (kết nối vào Private Subnet), hoặc dùng một **Bastion Host / SSM Session Manager** để kết nối vào các Node.
 - **Dynamic Inventory**: Sử dụng plugin `aws_ec2` của Ansible để tự động quét IP của 3 node Vault dựa trên Tag, thay vì dùng script generate tĩnh.
+- **Truy cập UI**: Client sẽ truy cập Vault qua DNS của NLB/ALB (VD: `https://vault.domain.com`).
 
 ### 3. Cấu hình Vault Configuration (`ansible/roles/vault-configure/templates/vault.hcl.j2`)
 Bổ sung Block KMS Auto-unseal:
@@ -172,7 +169,7 @@ Và bật TLS (`tls_disable = false`) với cert lấy từ Let's Encrypt hoặc
 
 ## Môi trường 3: On-Premise (Máy chủ vật lý / VM)
 
-Nếu triển khai trên các Data Center truyền thống (VMware, Proxmox, Bare metal):
+Bộ playbook tiêu chuẩn dành riêng cho môi trường On-Premise đã được đóng gói tại thư mục `ansible-for-onpremise/`. Vui lòng xem `ansible-for-onpremise/README.md` để biết thêm chi tiết cài đặt bằng IP tĩnh.
 
 ### 1. Hạ tầng (Infrastructure)
 - **Terraform**: Có thể không cần dùng Terraform nếu bạn cấp phát IP tĩnh thủ công cho 3 VMs. Hoặc nếu dùng ảo hóa, hãy đổi provider sang `vsphere` hoặc `proxmox`.
