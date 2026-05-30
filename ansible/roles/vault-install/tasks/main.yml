@@ -1,0 +1,79 @@
+---
+# Vault Install Role - Install HashiCorp Vault on Ubuntu
+
+- name: Install prerequisite packages
+  apt:
+    name:
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+    state: present
+    update_cache: true
+
+- name: Add HashiCorp GPG key
+  shell: |
+    curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+- name: Add HashiCorp repository
+  shell: |
+    echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
+    > /etc/apt/sources.list.d/hashicorp.list
+  args:
+    creates: /etc/apt/sources.list.d/hashicorp.list
+
+- name: Update apt cache
+  apt:
+    update_cache: true
+
+- name: Install Vault
+  apt:
+    name: "vault={{ vault_version }}*"
+    state: present
+  register: vault_install
+  retries: 3
+  delay: 5
+  until: vault_install is succeeded
+
+- name: Remove IPC_LOCK capability from Vault binary to fix EPERM in Docker
+  command: setcap -r /usr/bin/vault
+  ignore_errors: true
+
+- name: Verify Vault installation
+  command: vault version
+  register: vault_version_output
+  changed_when: false
+
+- name: Display Vault version
+  debug:
+    msg: "{{ vault_version_output.stdout }}"
+
+- name: Create vault user
+  user:
+    name: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    system: true
+    shell: /bin/false
+    home: "{{ vault_data_dir }}"
+    create_home: false
+  ignore_errors: true
+
+- name: Create Vault directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0750"
+  loop:
+    - "{{ vault_config_dir }}"
+    - "{{ vault_data_dir }}"
+    - "{{ vault_log_dir }}"
+    - "{{ vault_data_dir }}/raft"
+
+- name: Remove vault binary capabilities (mlock) to allow execution in Docker
+  command: "setcap -r {{ vault_bin_path }}"
+  changed_when: false
+  ignore_errors: true

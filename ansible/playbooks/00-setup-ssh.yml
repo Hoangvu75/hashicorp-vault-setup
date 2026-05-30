@@ -1,0 +1,21 @@
+---
+# Playbook: Setup SSH between all vault nodes
+- name: Setup SSH connectivity between all vault nodes
+  hosts: vault_servers
+  gather_facts: true
+  roles:
+    - ssh-setup
+
+  post_tasks:
+    - name: Verify SSH from this node to all other nodes
+      command: "ssh -o BatchMode=yes {{ item.name }} echo 'SSH OK from {{ inventory_hostname }} to {{ item.name }}'"
+      loop: "{{ all_node_ips }}"
+      register: ssh_verify
+      changed_when: false
+
+    - name: Display SSH verification results
+      debug:
+        msg: "{{ item.stdout }}"
+      loop: "{{ ssh_verify.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"

@@ -1,0 +1,37 @@
+# Vault server configuration
+# Node: {{ vault_node_id }}
+
+# Disable memory locking (required for containers without IPC_LOCK)
+disable_mlock = true
+
+# UI enabled
+ui = true
+
+# Listener configuration
+listener "tcp" {
+  address       = "0.0.0.0:{{ vault_api_port }}"
+  cluster_address = "0.0.0.0:{{ vault_cluster_port }}"
+  tls_disable   = {{ vault_tls_disable | lower }}
+}
+
+# Raft Integrated Storage backend
+storage "raft" {
+  path    = "{{ vault_data_dir }}/raft"
+  node_id = "{{ vault_node_id }}"
+
+{% for node in vault_raft_nodes %}
+{% if node.node_id != vault_node_id %}
+  retry_join {
+    leader_api_addr = "http://{{ node.address | regex_replace(':8201', ':' ~ vault_api_port | string) }}"
+  }
+{% endif %}
+{% endfor %}
+}
+
+# Cluster configuration
+cluster_addr = "{{ vault_cluster_addr }}"
+api_addr     = "{{ vault_api_addr }}"
+
+# Logging
+log_level = "info"
+log_file  = "{{ vault_log_dir }}/vault-audit.log"

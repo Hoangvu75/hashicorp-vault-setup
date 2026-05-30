@@ -1,0 +1,39 @@
+# ─── SSH Keys (generated at runtime) ─────────────────────────────────────────
+ssh-keys/
+ssh-keys/id_rsa
+ssh-keys/id_rsa.pub
+
+# ─── Vault sensitive data ─────────────────────────────────────────────────────
+ansible/vault-init-keys.json
+vault-data/
+
+# ─── Terraform ────────────────────────────────────────────────────────────────
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+
+# ─── LocalStack volume ────────────────────────────────────────────────────────
+volume/
+
+# ─── Docker compose generated backup ─────────────────────────────────────────
+docker-compose.yml.bak
+
+# ─── Ansible generated files ──────────────────────────────────────────────────
+*.retry
+ansible/inventory/hosts.yml
+ansible/inventory/group_vars/all.yml
+
+# ─── Environment variables ────────────────────────────────────────────────────
+.env
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  localstack:
+    container_name: "${LOCALSTACK_DOCKER_NAME:-localstack-main}"
+    image: localstack/localstack-pro:stable
+    ports:
+      - "127.0.0.1:4566:4566"            # LocalStack Gateway
+      - "127.0.0.1:4510-4559:4510-4559"  # external services port range
+      - "127.0.0.1:2222-2230:2222-2230"  # Pre-mapped SSH ports for EC2 instances
+    environment:
+      - DEBUG=${DEBUG:-0}
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - GATEWAY_LISTEN=0.0.0.0:4566
+      - SERVICES=ec2,elbv2
+      - EC2_DOCKER_NETWORK=localstack-net
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - localstack-net
+
+  vault-proxy:
+    container_name: vault-proxy
+    image: alpine/socat
+    network_mode: "service:localstack"
+    command: tcp-listen:4510,fork,reuseaddr tcp-connect:172.20.0.5:8200
+    depends_on:
+      - localstack
+
+networks:
+  localstack-net:
+    name: localstack-net

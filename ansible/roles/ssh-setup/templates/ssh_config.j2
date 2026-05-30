@@ -1,0 +1,11 @@
+{% for node in all_node_ips %}
+Host {{ node.name }}
+    HostName {{ node.ip }}
+    User root
+    Port 22
+    IdentityFile {{ ssh_key_path }}
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+
+{% endfor %}
