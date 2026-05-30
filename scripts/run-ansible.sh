@@ -120,8 +120,8 @@ echo ""
 echo "========================================"
 echo " STEP 6: Running Ansible Playbook"
 echo "========================================"
-$DOCKER_CMD exec -u root -w /opt/ansible "localstack-ec2.$NODE1_ID" \
-    ansible-playbook -i inventory/hosts.yml playbooks/site.yml
+$DOCKER_CMD exec -u root "localstack-ec2.$NODE1_ID" \
+    bash -c "cd /opt/ansible && ansible-playbook -i inventory/hosts.yml playbooks/site.yml"
 
 # ─── Step 7: Extract credentials ─────────────────────────────────────────────
 echo ""

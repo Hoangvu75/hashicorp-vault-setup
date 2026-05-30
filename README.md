@@ -58,6 +58,44 @@ Dự án triển khai tự động Cụm **HashiCorp Vault High Availability (3 
 
 ---
 
+## Chi tiết các Scripts tự động hóa (`scripts/`)
+
+Hệ thống được điều phối hoàn toàn thông qua 4 script chính nằm trong thư mục `scripts/`:
+
+### 1. `scripts/start.sh` (Script Khởi chạy Chính)
+Đây là wrapper script tổng, tự động hóa từ A-Z quy trình triển khai:
+- Kiểm tra các package cần thiết (`jq`, `terraform`, `docker`, `dos2unix`).
+- Khởi động **LocalStack** thông qua `docker-compose`.
+- Khởi chạy **Terraform** (`terraform apply`) để cấp phát 3 máy ảo EC2, VPC và Network Load Balancer.
+- Khắc phục các lỗi kẹt port của LocalStack (tự động phát hiện và unpause các container bị treo do tranh chấp port SSH).
+- Gọi `run-ansible.sh` để bắt đầu cài đặt Vault.
+
+### 2. `scripts/run-ansible.sh` (Thực thi Ansible)
+Chịu trách nhiệm đưa Ansible vào môi trường và chạy playbook:
+- Gọi `generate-inventory.sh` để lấy danh sách IP thực tế của các EC2 containers.
+- Khởi tạo thư mục làm việc, dọn dẹp các tệp cấu hình cũ (như `vault-init-keys.json`).
+- **Copy code Ansible và SSH keys** từ máy Host (Windows/Mac) vào thẳng bên trong container EC2 Node 1.
+- Cài đặt Python 3, Pip và Ansible trực tiếp trên Node 1.
+- Ra lệnh cho Node 1 thực thi `ansible-playbook` để cấu hình chính nó và SSH sang cấu hình Node 2, Node 3.
+- Sau khi Ansible hoàn tất, copy ngược file credentials `vault-init-keys.json` (chứa Root Token) về lại máy Host.
+- Xóa bỏ Nginx Proxy cũ và **dựng Nginx Proxy mới** (`vault-proxy`) trỏ đúng vào IP của Node 1 để host có thể truy cập UI.
+
+### 3. `scripts/generate-inventory.sh` (Sinh Inventory động)
+Giải quyết bài toán IP động của LocalStack:
+- Quét danh sách các container thuộc LocalStack EC2 qua lệnh `docker ps`.
+- Dùng `docker inspect` để trích xuất **IP nội bộ (172.20.0.x)** và **Port SSH (2222, 2223, 2224)** đã được map ra ngoài host.
+- Ghi đè vào file `ansible/inventory/hosts.yml` theo đúng định dạng Ansible để định tuyến chính xác.
+
+### 4. `scripts/cleanup.sh` (Dọn dẹp môi trường)
+Dùng để reset hệ thống về trạng thái sạch:
+- Xóa bỏ container `vault-proxy`.
+- Xóa cấu hình credentials `vault-init-keys.json`.
+- Chạy `terraform destroy` để thu hồi toàn bộ tài nguyên AWS (VPC, EC2, NLB).
+- Force-remove (xóa ép) bất kỳ EC2 container nào còn sót lại trên Docker do LocalStack rò rỉ.
+- Xóa các file `.terraform` và `terraform.tfstate` để tránh xung đột cho lần chạy tiếp theo.
+
+---
+
 ## Môi trường 1: LocalStack (Dev / Testing)
 
 ### 1. Yêu cầu hệ thống

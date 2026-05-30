@@ -27,7 +27,7 @@ $DOCKER_CMD rm -f vault-proxy 2>/dev/null && echo "  vault-proxy removed" || ech
 # Step 2: Destroy Terraform resources (removes EC2 containers)
 echo ""
 echo "[2/4] Destroying Terraform resources..."
-if [ -f "terraform/terraform.tfstate" ] && [ "$(cat terraform/terraform.tfstate | grep '"resources"' | head -1)" != "" ]; then
+if [ -f "terraform/terraform.tfstate" ] && grep -q '"resources"' terraform/terraform.tfstate 2>/dev/null; then
     $TF_CMD -chdir=terraform destroy -auto-approve || echo "  Terraform destroy failed or no resources to destroy"
 else
     echo "  No Terraform state found, skipping terraform destroy"
@@ -38,7 +38,7 @@ echo ""
 echo "[3/4] Force removing any remaining EC2 containers..."
 REMAINING=$($DOCKER_CMD ps -aq --filter "name=localstack-ec2") 
 if [ -n "$REMAINING" ]; then
-    echo "$REMAINING" | xargs $DOCKER_CMD rm -f
+    echo "$REMAINING" | xargs -r $DOCKER_CMD rm -f
     echo "  Removed remaining EC2 containers"
 else
     echo "  No EC2 containers found"
@@ -48,8 +48,23 @@ fi
 echo ""
 echo "[4/4] Cleaning Terraform state files, Docker Compose, and volumes..."
 docker compose down -v 2>/dev/null || true
-rm -f terraform/terraform.tfstate
-rm -f terraform/terraform.tfstate.backup
+
+# Tắt ép các tiến trình Terraform bị treo (nếu có) trên Windows/WSL
+pkill terraform 2>/dev/null || true
+if command -v taskkill.exe &> /dev/null; then
+    taskkill.exe /F /IM terraform.exe 2>/dev/null || true
+fi
+
+# Dọn dẹp mạnh tay các file cache của Terraform
+rm -rf terraform/.terraform terraform/terraform.tfstate* terraform/.terraform.lock.hcl 2>/dev/null || true
+# Đổi tên nếu file vẫn bị khóa (bởi IDE hoặc process ẩn)
+if [ -d "terraform/.terraform" ]; then
+    mv terraform/.terraform "terraform/.terraform.bak_$RANDOM" 2>/dev/null || true
+fi
+if [ -f "terraform/terraform.tfstate" ]; then
+    mv terraform/terraform.tfstate "terraform/terraform.tfstate.bak_$RANDOM" 2>/dev/null || true
+fi
+
 rm -f docker-compose.yml.bak
 rm -rf volume
 echo "  Cleaned"
