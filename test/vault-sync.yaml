@@ -26,6 +26,7 @@ spec:
   type: kv-v2
   mount: secret
   path: myapp
+  refreshAfter: 60s
   destination:
     name: myapp-k8s-secret
     create: true
