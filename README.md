@@ -11,7 +11,7 @@ Triển khai cụm **HashiCorp Vault High Availability (3 node)** sử dụng **
 │                        Máy Host (Windows / macOS / Linux)                    │
 │                                                                              │
 │  Browser / CLI                 Terraform CLI          bash scripts/start.sh  │
-│  http://localhost:8200/ui      (IaC provisioning)     (full automation)      │
+│  http://127.0.0.1:8200/ui      (IaC provisioning)     (full automation)      │
 │         │                            │                        │              │
 │         ▼                            ▼                        ▼              │
 │ ┌──────────────────────────────────────────────────────────────────────────┐ │
@@ -67,7 +67,7 @@ Luồng triển khai (chỉ chạy 1 lần):
 Môi trường LocalStack chạy các EC2 instance bên trong một **isolated Docker bridge network** (`localstack-net`). Máy Host (Windows) **không thể** trực tiếp kết nối vào dải IP nội bộ này (ví dụ: `172.20.0.5`).
 
 `vault-proxy` (dùng `socat`) đóng vai trò **bridge/gateway**:
-- Lắng nghe ở `localhost:8200` (có thể truy cập từ Windows Host)
+- Lắng nghe ở `127.0.0.1:8200` (có thể truy cập từ Windows Host)
 - Forward toàn bộ traffic TCP đến `<Node1_IP>:8200` (Vault Leader) bên trong Docker network
 
 > **Lưu ý**: Script `run-ansible.sh` sẽ **tự động** phát hiện IP của Node 1 sau mỗi lần deploy và khởi động lại `vault-proxy` với IP đúng. Không cần chỉnh tay.
@@ -171,7 +171,7 @@ Script này sẽ:
 ### Vault UI (Web Browser)
 
 ```
-http://localhost:8200/ui
+http://127.0.0.1:8200/ui
 ```
 
 Chọn **Token** và dán `root_token` từ file `ansible/vault-init-keys.json`.
@@ -179,7 +179,7 @@ Chọn **Token** và dán `root_token` từ file `ansible/vault-init-keys.json`.
 ### Vault CLI
 
 ```bash
-export VAULT_ADDR=http://localhost:8200
+export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=<root_token>
 
 vault status
@@ -240,7 +240,7 @@ Các EC2 trong VPC nội bộ của LocalStack không thể SSH từ Windows Hos
 
 ```
 Windows Host             Docker Network (localstack-net)
-localhost:8200  ──────►  vault-proxy  ──────►  172.20.0.x:8200 (Vault Leader)
+127.0.0.1:8200  ──────►  vault-proxy  ──────►  172.20.0.x:8200 (Vault Leader)
                          (alpine/socat)
 ```
 

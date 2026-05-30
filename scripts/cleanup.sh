@@ -46,7 +46,8 @@ fi
 
 # Step 4: Clean Terraform state files and LocalStack volumes
 echo ""
-echo "[4/4] Cleaning Terraform state files and volumes..."
+echo "[4/4] Cleaning Terraform state files, Docker Compose, and volumes..."
+docker compose down -v 2>/dev/null || true
 rm -f terraform/terraform.tfstate
 rm -f terraform/terraform.tfstate.backup
 rm -f docker-compose.yml.bak

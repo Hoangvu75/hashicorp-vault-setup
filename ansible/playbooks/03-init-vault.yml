@@ -116,6 +116,13 @@
       delay: 5
       until: follower_health.status in [200, 429, 472, 473, 501, 503]
 
+    - name: Force Raft join to leader
+      shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator raft join http://{{ hostvars['vault-node-1']['ansible_host'] }}:{{ vault_api_port }}"
+      register: raft_join
+      retries: 5
+      delay: 5
+      until: raft_join.rc == 0
+
     - name: Unseal follower (key 1)
       shell: "VAULT_ADDR=http://127.0.0.1:{{ vault_api_port }} vault operator unseal {{ vault_keys[0] }}"
       changed_when: false

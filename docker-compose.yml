@@ -21,13 +21,6 @@ services:
     networks:
       - localstack-net
 
-  vault-proxy:
-    container_name: vault-proxy
-    image: alpine/socat
-    network_mode: "service:localstack"
-    command: tcp-listen:4510,fork,reuseaddr tcp-connect:172.20.0.4:8200
-    depends_on:
-      - localstack
 
 networks:
   localstack-net:
