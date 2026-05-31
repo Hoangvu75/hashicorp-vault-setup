@@ -3,14 +3,12 @@
 # Usage: ansible-playbook -c local /opt/ansible/playbooks/site.yml
 #        (run from vault-node-1)
 
-- name: "Phase 1: Setup SSH connectivity"
-  import_playbook: 00-setup-ssh.yml
 
-- name: "Phase 2: Install HashiCorp Vault"
+- name: "Phase 1: Install HashiCorp Vault"
   import_playbook: 01-install-vault.yml
 
-- name: "Phase 3: Configure Vault HA"
+- name: "Phase 2: Configure Vault HA"
   import_playbook: 02-configure-vault.yml
 
-- name: "Phase 4: Initialize and unseal Vault cluster"
+- name: "Phase 3: Initialize and unseal Vault cluster"
   import_playbook: 03-init-vault.yml

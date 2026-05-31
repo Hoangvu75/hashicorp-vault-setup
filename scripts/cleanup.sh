@@ -25,7 +25,13 @@ echo "========================================"
 echo ""
 echo "[2/4] Destroying Terraform resources..."
 if [ -f "terraform/terraform.tfstate" ] && grep -q '"resources"' terraform/terraform.tfstate 2>/dev/null; then
-    $TF_CMD -chdir=terraform destroy -auto-approve || echo "  Terraform destroy failed or no resources to destroy"
+    # Kiểm tra xem LocalStack có đang chạy không, nếu đã chết thì bỏ qua để tránh treo
+    LS_STATUS=$($DOCKER_CMD inspect --format='{{.State.Status}}' localstack-main 2>/dev/null || echo "down")
+    if [ "$LS_STATUS" != "running" ]; then
+        echo "  LocalStack is down ($LS_STATUS), skipping terraform destroy to prevent hang."
+    else
+        $TF_CMD -chdir=terraform destroy -auto-approve || echo "  Terraform destroy failed or no resources to destroy"
+    fi
 else
     echo "  No Terraform state found, skipping terraform destroy"
 fi
