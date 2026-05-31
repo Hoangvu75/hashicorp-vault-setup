@@ -15,42 +15,49 @@ Dự án triển khai tự động Cụm **HashiCorp Vault High Availability (3 
 
 ## Kiến trúc & Cơ chế hoạt động
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                        Máy Host (Windows / macOS / Linux)                    │
-│                                                                              │
-│  Browser / CLI                 Terraform CLI          bash scripts/start.sh  │
-│  http://127.0.0.1:4510/ui      (IaC provisioning)     (full automation)      │
-│         │                            │                        │              │
-│         ▼                            ▼                        ▼              │
-│ ┌──────────────────────────────────────────────────────────────────────────┐ │
-│ │                     Docker Desktop (LocalStack Pro)                      │ │
-│ │                                                                          │ │
-│ │                         ┌──────────────────────────────────────────────┐ │ │
-│ │                         │      localstack-ec2-link-local (Bridge)      │ │ │
-│ │                         │                                              │ │ │
-│ │                         │  ┌──────────────────────────────────────┐    │ │ │
-│ │                         │  │         LocalStack Pro               │    │ │ │
-│ │                         │  │   (giả lập AWS: EC2, VPC, ELBv2)     │    │ │ │
-│ │    Port 4510 mapped     │  │                                      │    │ │ │
-│ │    to LocalStack NLB───►│  │  ┌─────────────┐                     │    │ │ │
-│ │                         │  │  │  AWS NLB    │ (L4 Load Balancer)  │    │ │ │
-│ │                         │  │  │  :8200      │ Round-Robin TCP     │    │ │ │
-│ │                         │  │  └──────┬──────┘                     │    │ │ │
-│ │                         │  │         │                            │    │ │ │
-│ │                         │  │    ┌────┴──────────────────────┐     │    │ │ │
-│ │                         │  │    ▼         ▼                 ▼     │    │ │ │
-│ │                         │  │ ┌────────┐┌────────┐┌────────┐       │    │ │ │
-│ │                         │  │ │ EC2 #1 ││ EC2 #2 ││ EC2 #3 │       │    │ │ │
-│ │                         │  │ │(Leader)││(Follow)││(Follow)│       │    │ │ │
-│ │                         │  │ │:8200   ││:8200   ││:8200   │       │    │ │ │
-│ │                         │  │ │:8201   ││:8201   ││:8201   │       │    │ │ │
-│ │                         │  │ └────────┘└────────┘└────────┘       │    │ │ │
-│ │                         │  │     Raft Cluster (port 8201)         │    │ │ │
-│ │                         │  └──────────────────────────────────────┘    │ │ │
-│ │                         └──────────────────────────────────────────────┘ │ │ 
-│ └──────────────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Host [Máy Host: Windows / macOS / Linux]
+        Browser([Browser / CLI: Port 4510])
+        TF([Terraform CLI])
+        Bash([bash scripts/start.sh])
+    end
+
+    subgraph Docker [Docker Desktop]
+        subgraph Bridge [Network: localstack-ec2-link-local]
+            subgraph LocalStack [LocalStack Pro: AWS Emulator]
+                NLB(AWS NLB: Port 8200)
+                
+                subgraph Raft [Raft Cluster: Port 8201]
+                    EC2_1(EC2 1: Leader)
+                    EC2_2(EC2 2: Follower)
+                    EC2_3(EC2 3: Follower)
+                end
+            end
+        end
+    end
+
+    Browser -->|Mapped to 4510| NLB
+    TF --> LocalStack
+    Bash --> LocalStack
+    
+    NLB -->|Round-Robin TCP 8200| EC2_1
+    NLB -->|Round-Robin TCP 8200| EC2_2
+    NLB -->|Round-Robin TCP 8200| EC2_3
+    
+    EC2_1 -.->|Raft Sync 8201| EC2_2
+    EC2_1 -.->|Raft Sync 8201| EC2_3
+    EC2_2 -.->|Raft Sync 8201| EC2_3
+
+    classDef host fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:black;
+    classDef docker fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:black;
+    classDef ls fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:black;
+    classDef ec2 fill:#fbe9e7,stroke:#d84315,stroke-width:2px,color:black;
+    
+    class Host host;
+    class Docker docker;
+    class LocalStack ls;
+    class EC2_1,EC2_2,EC2_3 ec2;
 ```
 
 - **Mạng (Network):** Môi trường LocalStack sử dụng mạng `localstack-ec2-link-local` để giả lập VPC. LocalStack tự động cấp phát port `4510` (trên dải external services) cho AWS Network Load Balancer (NLB) để kết nối trực tiếp từ máy host vào cụm Vault.
