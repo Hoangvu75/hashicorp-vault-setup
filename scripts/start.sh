@@ -51,6 +51,12 @@ echo "========================================"
 echo " STEP 2: Provisioning EC2 with Terraform"
 echo "========================================"
 
+# Forcefully kill hanging terraform processes to avoid locked state files
+pkill terraform 2>/dev/null || true
+if command -v taskkill &> /dev/null; then
+    taskkill //F //IM terraform.exe 2>/dev/null || true
+fi
+
 # Init (only if .terraform folder doesn't exist)
 if [ ! -d "terraform/.terraform" ]; then
     echo "  Initializing Terraform..."
